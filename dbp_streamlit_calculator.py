@@ -1,6 +1,6 @@
 # =========================================================
 # DBP IN-HOSPITAL MORTALITY CALCULATOR
-# Premium clinical Streamlit app
+# Final Streamlit app using shrinkage-adjusted and recalibrated coefficients
 # =========================================================
 
 import math
@@ -8,15 +8,16 @@ import streamlit as st
 import pandas as pd
 
 # ---------------------------------------------------------
-# MODEL COEFFICIENTS
+# FINAL MODEL COEFFICIENTS
+# Derived from bootstrap validation, shrinkage, and intercept recalibration
 # ---------------------------------------------------------
-BETA_0 = 7.126204
-BETA_BW = -0.006566
-BETA_APGAR5 = -0.412974
-BETA_EXTREME = 0.831027
+BETA_0 = 6.513771
+BETA_BW = -0.006056
+BETA_APGAR5 = -0.384107
+BETA_EXTREME = 0.734355
 
 # ---------------------------------------------------------
-# FUNCTIONS
+# PREDICTION FUNCTION
 # ---------------------------------------------------------
 def predict_risk(birth_weight_g: float, apgar5: int, extreme_prematurity: int):
     logit = (
@@ -28,28 +29,31 @@ def predict_risk(birth_weight_g: float, apgar5: int, extreme_prematurity: int):
     risk = 1 / (1 + math.exp(-logit))
     return logit, risk
 
+# ---------------------------------------------------------
+# RISK CATEGORY
+# ---------------------------------------------------------
 def risk_band(risk: float) -> str:
     if risk < 0.05:
-        return "Low predicted risk"
+        return "Low risk of in-hospital mortality"
     elif risk < 0.20:
-        return "Intermediate predicted risk"
+        return "Intermediate risk of in-hospital mortality"
     elif risk < 0.50:
-        return "High predicted risk"
+        return "High risk of in-hospital mortality"
     else:
-        return "Very high predicted risk"
+        return "Very high risk of in-hospital mortality"
 
 def risk_color(risk: float) -> str:
     if risk < 0.05:
-        return "#2E7D32"
+        return "#2E7D32"   # green
     elif risk < 0.20:
-        return "#F9A825"
+        return "#F9A825"   # amber
     elif risk < 0.50:
-        return "#EF6C00"
+        return "#EF6C00"   # orange
     else:
-        return "#C62828"
+        return "#C62828"   # red
 
 # ---------------------------------------------------------
-# PAGE CONFIG
+# STREAMLIT PAGE CONFIG
 # ---------------------------------------------------------
 st.set_page_config(
     page_title="DBP Mortality Risk Calculator",
@@ -103,7 +107,7 @@ st.markdown(
         margin-bottom: 0.5rem;
     }
     .small-note {
-        font-size: 0.90rem;
+        font-size: 0.92rem;
         color: #475569;
     }
     </style>
@@ -119,7 +123,7 @@ st.markdown(
     <div class="title-box">
         <h1 style="margin:0;">DBP in-hospital mortality calculator</h1>
         <p style="margin:0.35rem 0 0 0; font-size:1.02rem;">
-        Clinical web calculator derived from the final multivariable logistic regression model
+        Clinical web calculator derived from the final shrinkage-adjusted multivariable logistic regression model
         using birth weight, Apgar score at 5 minutes, and extreme prematurity.
         </p>
     </div>
@@ -130,8 +134,8 @@ st.markdown(
 st.markdown(
     """
     <div class="subtitle-box">
-        <b>Purpose.</b> This tool estimates the probability of <b>in-hospital mortality</b> in preterm infants.
-        It is intended to support clinical judgment and risk stratification, not to replace bedside assessment.
+        <b>Purpose.</b> This tool estimates the probability of <b>in-hospital mortality</b> in preterm infants with bronchopulmonary dysplasia.
+        It is intended to support clinical judgment and bedside risk stratification, not to replace clinical assessment.
     </div>
     """,
     unsafe_allow_html=True
@@ -153,7 +157,7 @@ with left:
             max_value=3000,
             value=800,
             step=10,
-            help="Observed study range was approximately 515–2100 g."
+            help="Model-derived clinical range was centered around very-low-birth-weight infants."
         )
 
         apgar5 = st.slider(
@@ -176,12 +180,21 @@ with left:
     st.markdown(
         """
         <p class="small-note">
-        Inputs correspond to the final predictive model. Lower birth weight, lower Apgar score,
-        and extreme prematurity increase predicted risk.
+        Lower birth weight, lower Apgar score at 5 minutes, and extreme prematurity increase the predicted risk of in-hospital mortality.
         </p>
         """,
         unsafe_allow_html=True
     )
+
+    st.markdown(
+        """
+        <p class="small-note">
+        <b>Model applicability:</b> This model was derived from a cohort of infants with bronchopulmonary dysplasia and should be interpreted in that clinical context.
+        </p>
+        """,
+        unsafe_allow_html=True
+    )
+
     st.markdown('</div>', unsafe_allow_html=True)
 
 with right:
@@ -213,11 +226,19 @@ with right:
 
         st.progress(float(min(max(risk, 0.0), 1.0)))
 
+        st.markdown(
+            """
+            **Interpretation**
+            - This estimate reflects baseline risk according to the final prediction model.
+            - Clinical decisions should also consider factors not included in the model.
+            """
+        )
+
         with st.expander("Model details"):
             st.write(f"**Logit:** {logit:.4f}")
             st.write(f"**Predicted probability:** {risk:.4f}")
             st.latex(
-                r"\text{logit}(p)=7.126204-0.006566\times \text{Birth weight}-0.412974\times \text{Apgar5}+0.831027\times \text{Extreme prematurity}"
+                r"\text{logit}(p)=6.513771-0.006056\times \text{Birth weight}-0.384107\times \text{Apgar5}+0.734355\times \text{Extreme prematurity}"
             )
             st.markdown(
                 r"""
@@ -229,7 +250,7 @@ p = \frac{1}{1 + e^{-\text{logit}(p)}}
 """
             )
     else:
-        st.info("Enter the clinical values and click Calculate risk to generate an individual prediction.")
+        st.info("Enter the clinical values and click **Calculate risk** to generate an individual prediction.")
 
     st.markdown('</div>', unsafe_allow_html=True)
 
@@ -239,10 +260,10 @@ p = \frac{1}{1 + e^{-\text{logit}(p)}}
 st.markdown("### Example scenarios")
 
 examples = [
-    {"Birth weight (g)": 700, "Apgar 5": 4, "Extreme prematurity": 1},
+    {"Birth weight (g)": 700, "Apgar 5": 5, "Extreme prematurity": 1},
     {"Birth weight (g)": 800, "Apgar 5": 6, "Extreme prematurity": 1},
-    {"Birth weight (g)": 1000, "Apgar 5": 7, "Extreme prematurity": 1},
-    {"Birth weight (g)": 1200, "Apgar 5": 8, "Extreme prematurity": 0},
+    {"Birth weight (g)": 900, "Apgar 5": 7, "Extreme prematurity": 1},
+    {"Birth weight (g)": 1200, "Apgar 5": 9, "Extreme prematurity": 0},
     {"Birth weight (g)": 1500, "Apgar 5": 9, "Extreme prematurity": 0},
 ]
 
@@ -271,8 +292,8 @@ st.markdown(
 """
 )
 
-st.markdown("### Citation-ready model")
+st.markdown("### Citation-ready final model")
 st.code(
-    "logit(p) = 7.126204 - 0.006566 × Birth weight - 0.412974 × Apgar5 + 0.831027 × Extreme prematurity",
+    "logit(p) = 6.513771 - 0.006056 × Birth weight - 0.384107 × Apgar5 + 0.734355 × Extreme prematurity",
     language="text"
 )
